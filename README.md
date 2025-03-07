@@ -31,7 +31,7 @@ The following packages will be automatically installed:
 
     or download the .zip 
 
-    cd ProvusFormatter-main
+    cd ProvusDataFormatter-main
 
 2. Install requirements in python env
 
