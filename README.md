@@ -37,12 +37,11 @@ The following packages will be automatically installed:
 
     pip install -r requirements.txt
 
-## Usage
+3. Launch the app
 
-### Launch the Application
-
-After installation, run the formatter using:
     python main.py
+
+## Usage
 
 ### Basic Workflow
 
