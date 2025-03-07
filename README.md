@@ -27,7 +27,7 @@ The following packages will be automatically installed:
 ### Install from Source
 
 1. Clone the repository:
-    git clone [https://github.com/yourusername/provus-formatter.git](https://github.com/anthonyznova/ProvusFormatter)
+    git clone [[https://github.com/yourusername/provus-formatter.git](https://github.com/anthonyznova/ProvusFormatter)](https://github.com/anthonyznova/ProvusDataFormatter)
 
     or download the .zip 
 
