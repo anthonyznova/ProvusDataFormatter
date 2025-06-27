@@ -3,6 +3,7 @@ import csv
 from pathlib import Path
 import logging
 from collections import defaultdict
+from .mcg_parser import TEMParser, MCGParser, determine_field_type, generate_channel_colors
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +52,96 @@ class FileProcessor:
         }
     
     def parse_file_headers(self, file_path):
-        """Parse file for header constants and their values"""
+        """Parse file for header constants and their values using robust parsers"""
         try:
             logger.info(f"\nProcessing: {Path(file_path).name}")
+            file_path_obj = Path(file_path)
             
+            # Determine file type and use appropriate parser
+            if file_path_obj.suffix.lower() == '.tem':
+                return self._parse_tem_file(file_path)
+            elif file_path_obj.suffix.lower() == '.mcg':
+                return self._parse_mcg_file(file_path)
+            else:
+                # Fallback to original parsing logic for other file types
+                return self._parse_generic_file(file_path)
+            
+        except Exception as e:
+            logger.error(f"Error parsing file {file_path}: {str(e)}", exc_info=True)
+            return None
+    
+    def _parse_tem_file(self, file_path):
+        """Parse TEM file using the robust TEM parser"""
+        try:
+            parser = TEMParser()
+            header = parser.parse_file(file_path)
+            
+            # Convert TEM header to the format expected by the rest of the application
+            results = {
+                'base_frequency': f"{header.base_frequency:.3f}" if header.base_frequency else None,
+                'units': header.units,
+                'duty_cycle': header.duty_cycle if header.duty_cycle else 'Undefined',
+                'tx_waveform': header.tx_waveform if header.tx_waveform else 'Undefined',
+                'system_info': header.system_info or header.instrument,
+                'survey_config': header.survey_config or header.configuration,
+                'data_type': header.data_type,
+                'offtime': header.off_time,
+                'times_start': header.times_start,
+                'times_end': header.times_end,
+                'num_channels': len(header.times_start) if header.times_start else 0,
+                'header_lines': []  # TEM parser doesn't store original lines
+            }
+            
+            # Set default duty cycle for UTEM if not specified
+            if not results['duty_cycle'] or results['duty_cycle'] == 'Undefined':
+                if results['tx_waveform'] == 'UTEM':
+                    results['duty_cycle'] = '100'
+            
+            logger.info(f"TEM parse results - Frequency: {results['base_frequency']}, "
+                       f"Channels: {results['num_channels']}, TX: {results['tx_waveform']}")
+            logger.info(f"Start times: {results['times_start']}")
+            logger.info(f"End times: {results['times_end']}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error parsing TEM file {file_path}: {e}")
+            return None
+    
+    def _parse_mcg_file(self, file_path):
+        """Parse MCG file using the robust MCG parser"""
+        try:
+            parser = MCGParser()
+            header = parser.parse_file(file_path)
+            
+            # Convert MCG header to the format expected by the rest of the application
+            results = {
+                'base_frequency': f"{header.base_frequency:.3f}" if header.base_frequency else None,
+                'units': str(header.units) if header.units else None,
+                'duty_cycle': 'Undefined',  # MCG files don't typically have duty cycle
+                'tx_waveform': header.waveform_name or header.transmitter_name or 'Undefined',
+                'system_info': header.transmitter_name or header.receiver_name,
+                'survey_config': str(header.configuration) if header.configuration else None,
+                'data_type': 'MCG',
+                'offtime': str(header.off_time) if header.off_time else None,
+                'times_start': [t * 1000 for t in header.channel_starts],  # Convert to ms
+                'times_end': [t * 1000 for t in header.channel_ends],      # Convert to ms
+                'num_channels': len(header.channel_starts),
+                'header_lines': []  # MCG parser doesn't store original lines
+            }
+            
+            logger.info(f"MCG parse results - Frequency: {results['base_frequency']}, "
+                       f"Channels: {results['num_channels']}, TX: {results['tx_waveform']}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error parsing MCG file {file_path}: {e}")
+            return None
+    
+    def _parse_generic_file(self, file_path):
+        """Fallback parsing for non-TEM/MCG files (original logic)"""
+        try:
             # Initialize results dictionary
             results = {
                 'base_frequency': None,
@@ -68,7 +155,7 @@ class FileProcessor:
                 'times_start': [],
                 'times_end': [],
                 'num_channels': None,
-                'header_lines': []  # Add this to store original lines
+                'header_lines': []
             }
             
             times = None
@@ -191,7 +278,7 @@ class FileProcessor:
                 return results
             
         except Exception as e:
-            logger.error(f"Error parsing file {file_path}: {str(e)}", exc_info=True)
+            logger.error(f"Error parsing generic file {file_path}: {str(e)}", exc_info=True)
             return None
     
     def _process_time_windows(self, line, results):
@@ -402,13 +489,13 @@ class FileProcessor:
             output_path = output_dir / filename
             
             # Generate colors for all channels
-            colors = self.generate_channel_colors(num_channels)
+            colors = [generate_channel_colors(i, num_channels) for i in range(num_channels)]
             
             with open(output_path, 'w', newline='') as f:
                 # Write header rows without quotes
                 f.write(f"Sampling Name,{sampling_name}\n")
                 f.write(f"Primary Time Gate,{times_start[0]:.3f},{times_end[0]:.3f}\n")
-                f.write(f"Field Type,{self._determine_field_type(units)}\n")
+                f.write(f"Field Type,{determine_field_type(units).lower()}\n")
                 f.write("Channel Name,ChStart,ChEnd,Red,Green,Blue,LineWt\n")
                 
                 # Write channel data
@@ -475,41 +562,67 @@ class FileProcessor:
             if not line:
                 continue
                 
-            # Look for survey parameters line
-            if not survey_params and 'Metric' in line and 'Cable' in line:
-                parts = line.strip().split()
-                survey_params = {
-                    'survey_mode': parts[0],
-                    'units': parts[1],
-                    'sync_type': parts[2],
-                    'time_base': float(parts[3]),
-                    'ramp_time': int(parts[4]),
-                    'n_gates': int(parts[5]),
-                    'n_readings': int(parts[6])
-                }
+            # Look for survey parameters line - modified to handle different formats
+            if not survey_params and 'Metric' in line:
+                try:
+                    parts = line.strip().split()
+                    # Ensure we have enough parts
+                    if len(parts) >= 7:
+                        # Different formats have parameters in the same positions
+                        # Format: [survey_mode] Metric [sync_type] [time_base] [ramp_time] [n_gates] [n_readings]
+                        survey_params = {
+                            'survey_mode': parts[0],  # Borehole, Surface, etc.
+                            'units': parts[1],        # Should be 'Metric'
+                            'sync_type': parts[2],    # Crystal-Master, Cable, etc.
+                            'time_base': float(parts[3]),
+                            'ramp_time': int(parts[4]),
+                            'n_gates': int(parts[5]),
+                            'n_readings': int(parts[6])
+                        }
+                        logger.info(f"Found survey parameters: {survey_params}")
+                except Exception as e:
+                    logger.warning(f"Could not parse survey parameters from line: {line}. Error: {str(e)}")
                 continue
             
             # Look for time window section
             if line.startswith('-') and 'e' in line.lower() and not found_time_window_section:
                 found_time_window_section = True
+                logger.info(f"Found time window section starting with: {line}")
                 
             if found_time_window_section:
                 if '$' in line:
+                    logger.info(f"End of time window section at line: {line}")
                     break
                     
                 try:
                     numbers = [x for x in line.split() if ('e' in x.lower() or 'e-' in x.lower())]
-                    time_windows.extend([float(x) for x in numbers])
-                except ValueError:
+                    if numbers:
+                        time_windows.extend([float(x) for x in numbers])
+                except ValueError as ve:
+                    logger.warning(f"Could not parse numbers in time window line: {line}. Error: {str(ve)}")
                     continue
         
         if survey_params is None:
-            raise ValueError("Could not find survey parameters line")
+            error_msg = "Could not find survey parameters line with 'Metric' keyword"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
+        # Calculate derived values
         base_freq = 1.0 / (4 * survey_params['time_base'] / 1000.0)
         ramp_time = survey_params['ramp_time'] / 1e6
+        units = "nanoTesla/sec"  # Default for PEM
+        num_gates = survey_params['n_gates']
         
-        return base_freq, ramp_time, survey_params, time_windows
+        # Check if we have the expected number of time windows
+        if len(time_windows) == 0:
+            error_msg = "No time windows found in file"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        logger.info(f"Parsed PEM file with {num_gates} gates, base frequency {base_freq:.3f}Hz")
+        logger.info(f"Found {len(time_windows)} time windows")
+        
+        return base_freq, ramp_time, units, time_windows, num_gates
 
     def generate_pem_waveform_csv(self, filename, base_freq, ramp_time, output_file):
         """Generate waveform CSV file from PEM parameters."""
@@ -529,11 +642,15 @@ class FileProcessor:
                 (0.5, 0.0)
             ]
             
-            zero_time = next((time for time, amplitude in points if amplitude == 0), 0.25)
+            # Find the second occurrence of zero amplitude
+            zero_occurrences = [time for time, amplitude in points if amplitude == 0]
+            zero_time = zero_occurrences[1] if len(zero_occurrences) >= 2 else 0.25
+            
             with open(output_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 
-                writer.writerow(['Waveform Name', 'Crone_15Hz'])
+                # Use a generic name based on frequency rather than filename
+                writer.writerow(['Waveform Name', f'Crone_{base_freq:.1f}Hz'])
                 writer.writerow(['Time Units', 'scaled'])
                 writer.writerow(['Base Frequency', format(base_freq, '.3f')])
                 writer.writerow(['Waveform Zero Time', format(zero_time, '.6f')])
@@ -541,17 +658,22 @@ class FileProcessor:
                 
                 for time, current in points:
                     writer.writerow([format(time, '.6f'), format(current, '.6f')])
+            
+            # Return just the filename, not the full path
+            return Path(output_file).name
                     
         except Exception as e:
             logger.error(f"Error generating {output_file}: {str(e)}")
+            return None
 
-    def generate_pem_sampling_csv(self, filename, time_windows, output_file):
+    def generate_pem_sampling_csv(self, filename, time_windows, num_gates, units, output_file):
         """Generate sampling CSV file from PEM time windows."""
         try:
             with open(output_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 
-                writer.writerow(['Sampling Name', 'Crone_15Hz_21ch'])
+                # Use a generic name based on frequency and channel count
+                writer.writerow(['Sampling Name', f'Crone_{num_gates}ch'])
                 
                 if len(time_windows) >= 2:
                     pp_start = time_windows[0] * 1000
@@ -559,12 +681,17 @@ class FileProcessor:
                     writer.writerow(['Primary Time Gate', f"{pp_start:.3f}", f"{pp_end:.3f}"])
                 else:
                     writer.writerow(['Primary Time Gate', '-0.2', '-0.1'])
-                    
-                writer.writerow(['Field Type', 'dBdT'])
+                
+                # Determine field type based on units
+                field_type = 'dBdT' if units and 'sec' in units.lower() else 'B'    
+                writer.writerow(['Field Type', field_type])
                 writer.writerow(['Channel Name', 'ChStart', 'ChEnd', 'Red', 'Green', 'Blue', 'LineWt'])
                 
+                # Generate colors for all channels
+                colors = [generate_channel_colors(i, num_gates) for i in range(num_gates)]
+                
                 if len(time_windows) > 3:
-                    for i in range(len(time_windows)-3):
+                    for i in range(min(num_gates, len(time_windows)-3)):
                         ch_num = i + 1
                         start_time = time_windows[2] if i == 0 else time_windows[i+2]
                         end_time = time_windows[i+3]
@@ -572,18 +699,8 @@ class FileProcessor:
                         start_time *= 1000
                         end_time *= 1000
                         
-                        if ch_num <= 12:
-                            red = 0.996094
-                            green = 0.144533 + (ch_num - 1) * 0.0708
-                            blue = 0.652326 - (ch_num - 1) * 0.0545
-                        elif ch_num <= 15:
-                            red = 0.697813 - (ch_num - 13) * 0.2988
-                            green = 0.996094
-                            blue = 0
-                        else:
-                            red = 0
-                            green = 0.996094 - (ch_num - 16) * 0.0988
-                            blue = 0.198521 + (ch_num - 16) * 0.2988
+                        # Use the generated colors
+                        red, green, blue = colors[i]
                         
                         writer.writerow([
                             f"Ch{ch_num}",
@@ -599,9 +716,13 @@ class FileProcessor:
                 pp_end = time_windows[1] * 1000
                 writer.writerow(['PP', f"{pp_start:.3f}", f"{pp_end:.3f}", 
                                '0', '0.299774', '0.996094', '2'])
+                
+                # Return just the filename, not the full path
+                return Path(output_file).name
                         
         except Exception as e:
             logger.error(f"Error generating {output_file}: {str(e)}")
+            return None
 
     def generate_channel_colors(self, num_channels):
         """

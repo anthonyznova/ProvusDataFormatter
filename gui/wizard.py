@@ -1,10 +1,8 @@
-from PyQt5.QtWidgets import QWizard, QWizardPage
+from PyQt5.QtWidgets import QWizard, QWizardPage, QTreeWidget, QTreeWidgetItem, QHeaderView
 from gui.pages.file_selection import FileSelectionPage
 from gui.pages.analysis import AnalysisPage
 import logging
 from pathlib import Path
-import tkinter as tk
-from tkinter import ttk
 
 logger = logging.getLogger(__name__)
 
@@ -87,16 +85,19 @@ class SetupWizard(QWizard):
             ]
             table_data.append(row)
         
-        # Create and configure table
-        table = ttk.Treeview(self.current_page, columns=columns, show='headings')
+        # Create and configure table using PyQt5
+        table = QTreeWidget()
+        table.setHeaderLabels(columns)
         
-        # Set column headings
-        for col in columns:
-            table.heading(col, text=col)
-            table.column(col, width=100)  # Adjust width as needed
+        # Set column widths
+        header = table.header()
+        for i in range(len(columns)):
+            header.resizeSection(i, 100)  # Adjust width as needed
         
         # Insert data
         for row in table_data:
-            table.insert('', 'end', values=row)
+            item = QTreeWidgetItem(table)
+            for i, value in enumerate(row):
+                item.setText(i, str(value))
         
         return table 

@@ -3,10 +3,27 @@ import logging
 import os
 from pathlib import Path
 
-# Add the current directory to sys.path to allow imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+def setup_paths():
+    """Set up the Python path to find our modules"""
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        base_path = sys._MEIPASS
+    else:
+        # Running in development
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # Add the base directory and module directories to Python path
+    if base_path not in sys.path:
+        sys.path.insert(0, base_path)
+    
+    # Add core and gui to path
+    for module in ['core', 'gui']:
+        module_path = os.path.join(base_path, module)
+        if module_path not in sys.path:
+            sys.path.insert(0, module_path)
+
+# Set up paths before any other imports
+setup_paths()
 
 from PyQt5.QtWidgets import QApplication, QMessageBox, QWizard
 from PyQt5.QtGui import QIcon
@@ -14,14 +31,44 @@ from gui.wizard import SetupWizard
 
 def setup_logging():
     """Configure application logging"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('app.log'),
-            logging.StreamHandler()
-        ]
-    )
+    import tempfile
+    import os
+    
+    # Use user's temp directory or AppData for log file
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        if os.name == 'nt':  # Windows
+            log_dir = os.path.expandvars('%APPDATA%\\ProvFormatter')
+        else:
+            log_dir = os.path.expanduser('~/.provformatter')
+        
+        # Create log directory if it doesn't exist
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, 'app.log')
+    else:
+        # Running in development - use current directory
+        log_path = 'app.log'
+    
+    try:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_path),
+                logging.StreamHandler()
+            ]
+        )
+    except PermissionError:
+        # Fallback to console-only logging if file logging fails
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler()
+            ]
+        )
+        print(f"Warning: Could not create log file at {log_path}. Using console logging only.")
+    
     return logging.getLogger(__name__)
 
 def get_icon_path():
@@ -29,17 +76,13 @@ def get_icon_path():
     if getattr(sys, 'frozen', False):
         # Running in PyInstaller bundle
         base_path = Path(sys._MEIPASS)
-        icon_path = base_path / "provus_formatter" / "assets" / "icon.ico"
     else:
         # Running in development
-        # First try relative to the script
-        icon_path = Path(__file__).parent / "assets" / "icon.ico"
-        
-        # If that doesn't exist, try the absolute path
-        if not icon_path.exists():
-            # Try to find it relative to the src directory
-            src_path = Path(current_dir)
-            icon_path = src_path / "provus_formatter" / "assets" / "icon.ico"
+        base_path = Path(os.path.dirname(os.path.abspath(__file__)))
+    
+    icon_path = base_path / "assets" / "icon.ico"
+    if not icon_path.exists():
+        icon_path = base_path / "provus_formatter" / "assets" / "icon.ico"
     
     return icon_path
 
