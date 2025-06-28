@@ -21,8 +21,7 @@ download and extract the ZIP file:
    ```bash
    cd ProvusFormatter-main
    ```
-
-2. Install requirements in a Python environment:
+Install requirements in a Python environment:
    ```bash
    pip install -r requirements.txt
    ```
