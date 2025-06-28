@@ -1,6 +1,6 @@
 # Provus Formatter
 
-A Python GUI application that streamlines the process of preparing TEM/PEM (Transient Electromagnetic/Pulsed Electromagnetic) data files for import into Provus by automatically generating appropriate waveform and channel sampling scheme files, adding the appropriate flags to file headers, and updating project files. 
+A Python GUI application that will assist in brining data into provus projects
 
 
 
