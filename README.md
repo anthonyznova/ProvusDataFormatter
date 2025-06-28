@@ -3,6 +3,7 @@
 A Python GUI application that streamlines the process of preparing TEM/PEM (Transient Electromagnetic/Pulsed Electromagnetic) data files for import into Provus by automatically generating appropriate waveform and channel sampling scheme files, adding the appropriate flags to file headers, and updating project files. 
 
 
+
 ## Disclaimer
 
 This tool is provided to assist with data formatting. Users are responsible for verifying the accuracy aof the generated waveform and sampling files for their specific data and requirements. Always maintain backups of original data files.
@@ -10,42 +11,35 @@ This tool is provided to assist with data formatting. Users are responsible for 
 
 ## Installation
 
-### Download the installer .exe under releases and run
 
-OR
-
-
-### Install from Source
-
-download and extract the ZIP file:
-   ```bash
-   cd ProvusFormatter-main
-   ```
-Install requirements in a Python environment:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Download the installer ProvFormatter_setup.exe under releases tab, run the exe to install the program
 
 ## Usage
 
 ### Launch the Application
 
-After installation, run the formatter using:
-```bash
-python main.py
-```
+After installing by double clicking the setup.exe run the program
 
 ### Basic Workflow
 
+![Main UI](assets/mainui.png) 
+
 1. **File Selection**
+   - Set the root directory for output files (this would be your provus project folder)
    - Drag and drop TEM files into the application
-   - Set the root directory for output files
+   - click next
+
+
+![Table UI with Data Files](assets/tableUI.png)
+
 
 2. **Review waveform and sampling**
-   - Review detected parameters in the analysis table
-   - Modify waveform and sampling scheme assignments if needed by DOUBLE CLICKING ON A ROW
-   - Preview and edit waveform shapes using the built-in waveform editor
-   - Select appropriate data styles for each file
+   - Review detected parameters in the table
+   - Modify waveform, sampling, data style assignments if needed using the dropdown menus under the table
+   - Preview and edit waveform shapes using the built-in waveform editor by DOUBLE CLICKING ON A ROW IN THE TABLE
+
+
+![Waveform Editor](assets/waveformedit.png)
 
 3. **File Generation**
    - Click "Update Headers" to write waveform and sampling information to data files
